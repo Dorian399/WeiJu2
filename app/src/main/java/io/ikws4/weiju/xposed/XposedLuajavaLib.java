@@ -8,8 +8,6 @@ import org.luaj.vm2.lib.jse.LuajavaLib;
 
 import java.io.File;
 
-import de.robv.android.xposed.XposedHelpers;
-
 public class XposedLuajavaLib extends LuajavaLib {
 
     @Override
@@ -17,10 +15,16 @@ public class XposedLuajavaLib extends LuajavaLib {
         ProxyInvocationHandler handler = new ProxyInvocationHandler(lobj);
 
         try {
-            var path = new File(XposedInit.lpparam.appInfo.dataDir + "/code_cache/");
+            var appInfo = XposedInit.getCurrentAppInfo();
+            var classLoader = XposedInit.getCurrentClassLoader();
+            String dataDir = (appInfo != null && appInfo.dataDir != null) ? appInfo.dataDir : "/data/local/tmp";
+            var path = new File(dataDir + "/code_cache/");
+            if (!path.exists()) {
+                path.mkdirs();
+            }
             return ProxyBuilder.forClass(clazz)
                 .dexCache(path)
-                .parentClassLoader(XposedInit.lpparam.classLoader)
+                .parentClassLoader(classLoader)
                 .handler(handler)
                 .build();
         } catch (Exception e) {
@@ -28,12 +32,11 @@ public class XposedLuajavaLib extends LuajavaLib {
         }
     }
 
-
     @Override
     protected Class classForName(String name) {
         try {
-            return XposedHelpers.findClass(name, XposedInit.lpparam.classLoader);
-        } catch (XposedHelpers.ClassNotFoundError e) {
+            return ReflectionUtils.findClass(name, XposedInit.getCurrentClassLoader());
+        } catch (ClassNotFoundException e) {
             throw new LuaError(e);
         }
     }

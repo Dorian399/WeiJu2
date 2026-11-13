@@ -20,7 +20,7 @@ class XposedPackageLib extends PackageLib {
         super.call(modname, env);
         LuaTable searchers = package_.get("searchers").checktable();
 
-        // rmeove builtin searchers to improve performance, we dont't need those
+        // remove builtin searchers to improve performance, we don't need those
         searchers.set(1, new java_searcher());
         searchers.set(2, new xposed_script_searcher());
         searchers.set(3, NIL);
@@ -54,7 +54,7 @@ class XposedPackageLib extends PackageLib {
         public Varargs invoke(Varargs args) {
             LuaString name = args.checkstring(1);
 
-            // First try to load builtin package if founded
+            // First try to load builtin package if found
             String script = BuiltinPackage.require(name.checkjstring());
             if (!script.isEmpty()) {
                 LuaValue v = globals.load(script);
@@ -62,12 +62,15 @@ class XposedPackageLib extends PackageLib {
                     return LuaValue.varargsOf(v, name);
             }
 
-            // Seconds try to load user package
-            script = XposedInit.store.get(mCurrentHookPackageName + "_" + name.tojstring(), "null");
-            if (!script.equals("null")) {
-                LuaValue v = globals.load(script);
-                if (v.isfunction())
-                    return LuaValue.varargsOf(v, name);
+            // Second try to load user package
+            var store = XposedInit.getStore();
+            if (store != null) {
+                script = store.get(mCurrentHookPackageName + "_" + name.tojstring(), "null");
+                if (!script.equals("null")) {
+                    LuaValue v = globals.load(script);
+                    if (v.isfunction())
+                        return LuaValue.varargsOf(v, name);
+                }
             }
 
             // report error

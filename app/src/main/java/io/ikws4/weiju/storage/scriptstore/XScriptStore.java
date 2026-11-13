@@ -4,32 +4,35 @@ import android.content.Context;
 
 import java.util.Set;
 
+import io.github.libxposed.api.XposedInterface;
 import io.ikws4.weiju.storage.scriptstore.strategy.EmptyStoreStrategy;
+import io.ikws4.weiju.storage.scriptstore.strategy.LibXposedRemotePreferencesStoreStrategy;
 import io.ikws4.weiju.storage.scriptstore.strategy.RemoteSharedPreferencesStoreStrategy;
 import io.ikws4.weiju.storage.scriptstore.strategy.StoreStrategy;
-import io.ikws4.weiju.storage.scriptstore.strategy.XSharedPreferenceStoreStrategy;
 import io.ikws4.weiju.util.Logger;
 
 public class XScriptStore {
     private StoreStrategy strategy;
 
-    public XScriptStore(Context context) {
-        if ((strategy = new XSharedPreferenceStoreStrategy()).canRead()) {
-            Logger.d("XScriptStore:", "use XSharedPreferenceStoreStrategy");
-            return;
+    public XScriptStore(XposedInterface xposedInterface, Context context) {
+        if (xposedInterface != null) {
+            strategy = new LibXposedRemotePreferencesStoreStrategy(xposedInterface);
+            if (strategy.canRead()) {
+                Logger.d("XScriptStore:", "use LibXposedRemotePreferencesStoreStrategy");
+                return;
+            }
         }
 
-        if (context != null && (strategy = new RemoteSharedPreferencesStoreStrategy(context)).canRead()) {
-            Logger.d("XScriptStore:", "use RemoteSharedPreferencesStoreStrategy");
-            return;
+        if (context != null) {
+            strategy = new RemoteSharedPreferencesStoreStrategy(context);
+            if (strategy.canRead()) {
+                Logger.d("XScriptStore:", "use RemoteSharedPreferencesStoreStrategy");
+                return;
+            }
         }
 
         this.strategy = new EmptyStoreStrategy();
         Logger.e("XScriptStore:", "can not load scripts.");
-    }
-
-    public static void fixPermission() {
-        XSharedPreferenceStoreStrategy.fixPermission();
     }
 
     public boolean canRead() {

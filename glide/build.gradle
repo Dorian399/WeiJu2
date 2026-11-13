@@ -3,6 +3,7 @@ plugins {
 }
 
 android {
+    namespace 'io.ikws4.weiju.glide'
     compileSdk 32
 
     defaultConfig {

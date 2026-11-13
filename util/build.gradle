@@ -3,6 +3,7 @@ plugins {
 }
 
 android {
+    namespace 'io.ikws4.weiju.util'
     compileSdk 32
 
     defaultConfig {

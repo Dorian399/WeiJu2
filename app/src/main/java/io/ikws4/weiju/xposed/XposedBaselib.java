@@ -1,5 +1,7 @@
 package io.ikws4.weiju.xposed;
 
+import android.util.Log;
+
 import org.luaj.vm2.LuaError;
 import org.luaj.vm2.LuaTable;
 import org.luaj.vm2.LuaValue;
@@ -9,10 +11,12 @@ import org.luaj.vm2.lib.jse.CoerceJavaToLua;
 import org.luaj.vm2.lib.jse.CoerceLuaToJava;
 import org.luaj.vm2.lib.jse.JseBaseLib;
 
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XC_MethodReplacement;
-import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Executable;
+import java.lang.reflect.Method;
+import java.util.List;
+
+import io.github.libxposed.api.XposedInterface;
 
 class XposedBaselib extends JseBaseLib {
 
@@ -43,81 +47,126 @@ class XposedBaselib extends JseBaseLib {
                 }
             }
 
-            Object[] _params = new Object[1];
+            Class<?>[] parameterTypes = new Class<?>[0];
             if (!params.isnil()) {
                 var paramsTable = params.checktable();
-                _params = new Object[paramsTable.length() + 1];
+                parameterTypes = new Class<?>[paramsTable.length()];
                 for (int i = 0; i < paramsTable.length(); i++) {
-                    _params[i] = paramsTable.get(i + 1).checkuserdata();
+                    parameterTypes[i] = (Class<?>) paramsTable.get(i + 1).checkuserdata();
                 }
             }
 
+            Executable executable;
+            try {
+                if (isConstructor) {
+                    executable = ReflectionUtils.findConstructorExact(clazz, parameterTypes);
+                } else {
+                    executable = ReflectionUtils.findMethodExact(clazz, method.checkjstring(), parameterTypes);
+                }
+            } catch (NoSuchMethodException e) {
+                throw new LuaError(e);
+            }
+
+            Class<?> returnType = isConstructor ? null : (Class<?>) returns.checkuserdata();
+
+            XposedInit module = XposedInit.getInstance();
+            if (module == null) {
+                throw new LuaError("LibXposed module instance is not initialized");
+            }
+
+            XposedInterface.HookHandle hookHandle;
             if (!replace.isnil()) {
-                _params[_params.length - 1] = new XC_MethodReplacement() {
-                    @Override
-                    protected Object replaceHookedMethod(MethodHookParam param) {
-                        try {
-                            LuaValue[] vargs = new LuaValue[3];
-                            vargs[0] = CoerceJavaToLua.coerce(param.thisObject);
-                            vargs[1] = CoerceJavaToLua.coerce(param.args);
-                            vargs[2] = CoerceJavaToLua.coerce(param.getResult());
+                hookHandle = module.hook(executable).intercept(chain -> {
+                    try {
+                        Object thisObj = chain.getThisObject();
+                        List<Object> argsList = chain.getArgs();
+                        Object[] argsArray = argsList.toArray();
 
-                            Varargs ret = replace.invoke(vargs);
-                            // handle return value
-                            if (isConstructor || ret.narg() == 0 || ret.arg1().isnil()) return null;
-                            return CoerceLuaToJava.coerce(ret.arg1(), (Class<?>) returns.checkuserdata());
-                        } catch (Throwable e) {
-                            XposedBridge.log(e);
-                            Console.printErr(e);
-                            throw e;
+                        LuaValue[] vargs = new LuaValue[3];
+                        vargs[0] = CoerceJavaToLua.coerce(thisObj);
+                        vargs[1] = CoerceJavaToLua.coerce(argsArray);
+                        vargs[2] = LuaValue.NIL;
+
+                        Varargs ret = replace.invoke(vargs);
+                        if (isConstructor || returnType == void.class || ret.narg() == 0 || ret.arg1().isnil()) {
+                            return null;
                         }
+                        return CoerceLuaToJava.coerce(ret.arg1(), returnType);
+                    } catch (Throwable e) {
+                        module.log(Log.ERROR, "WeiJu2", "Error in replace hook", e);
+                        Console.printErr(e);
+                        throw e;
                     }
-                };
+                });
             } else {
-                _params[_params.length - 1] = new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
-                        call(before, param);
-                    }
+                hookHandle = module.hook(executable).intercept(chain -> {
+                    Object thisObj = chain.getThisObject();
+                    List<Object> argsList = chain.getArgs();
+                    Object[] argsArray = argsList.toArray();
 
-                    @Override
-                    protected void afterHookedMethod(MethodHookParam param) {
-                        call(after, param);
-                    }
-
-                    private void call(LuaValue func, MethodHookParam param) {
+                    // Before hook
+                    Object result = null;
+                    boolean shortCircuited = false;
+                    if (!before.isnil()) {
                         try {
-                            if (func.isnil()) return;
-
                             LuaValue[] vargs = new LuaValue[3];
-                            vargs[0] = CoerceJavaToLua.coerce(param.thisObject);
-                            vargs[1] = CoerceJavaToLua.coerce(param.args);
-                            vargs[2] = CoerceJavaToLua.coerce(param.getResult());
-
-                            Varargs ret = func.invoke(vargs);
-                            // handle return value
-                            if (isConstructor || ret.narg() == 0) return;
-                            if (ret.arg1().isnil()) {
-                                param.setResult(null);
-                            } else {
-                                param.setResult(CoerceLuaToJava.coerce(ret.arg1(), (Class<?>) returns.checkuserdata()));
+                            vargs[0] = CoerceJavaToLua.coerce(thisObj);
+                            vargs[1] = CoerceJavaToLua.coerce(argsArray);
+                            vargs[2] = LuaValue.NIL;
+                            Varargs ret = before.invoke(vargs);
+                            if (!isConstructor && ret.narg() > 0) {
+                                shortCircuited = true;
+                                if (returnType != void.class && !ret.arg1().isnil()) {
+                                    result = CoerceLuaToJava.coerce(ret.arg1(), returnType);
+                                }
                             }
                         } catch (Throwable e) {
-                            XposedBridge.log(e);
+                            module.log(Log.ERROR, "WeiJu2", "Error in before hook", e);
                             Console.printErr(e);
                         }
                     }
-                };
+
+                    // Proceed with original method / remaining chain
+                    Throwable invocationException = null;
+                    if (!shortCircuited) {
+                        try {
+                            result = chain.proceed(argsArray);
+                        } catch (Throwable t) {
+                            invocationException = t;
+                        }
+                    }
+
+                    // After hook
+                    if (!after.isnil()) {
+                        try {
+                            LuaValue[] vargs = new LuaValue[3];
+                            vargs[0] = CoerceJavaToLua.coerce(thisObj);
+                            vargs[1] = CoerceJavaToLua.coerce(argsArray);
+                            vargs[2] = CoerceJavaToLua.coerce(result);
+
+                            Varargs ret = after.invoke(vargs);
+                            if (!isConstructor && ret.narg() > 0) {
+                                if (returnType != void.class && !ret.arg1().isnil()) {
+                                    result = CoerceLuaToJava.coerce(ret.arg1(), returnType);
+                                } else {
+                                    result = null;
+                                }
+                                invocationException = null; // Overriding return clears error
+                            }
+                        } catch (Throwable e) {
+                            module.log(Log.ERROR, "WeiJu2", "Error in after hook", e);
+                            Console.printErr(e);
+                        }
+                    }
+
+                    if (invocationException != null) {
+                        throw invocationException;
+                    }
+                    return result;
+                });
             }
 
-            XC_MethodHook.Unhook unhook;
-            if (isConstructor) {
-                unhook = XposedHelpers.findAndHookConstructor(clazz, _params);
-            } else {
-                unhook = XposedHelpers.findAndHookMethod(clazz, method.checkjstring(), _params);
-            }
-
-            return CoerceJavaToLua.coerce(unhook);
+            return CoerceJavaToLua.coerce(hookHandle);
         }
     }
 }

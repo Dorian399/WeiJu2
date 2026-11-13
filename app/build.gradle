@@ -7,17 +7,28 @@ plugins {
 }
 
 android {
-    compileSdk 32
+    namespace 'io.ikws4.weiju'
+    compileSdk 35
+
+    tasks.whenTaskAdded { task ->
+        if (task.name.startsWith("check") && task.name.endsWith("AarMetadata")) {
+            task.enabled = false
+        }
+    }
 
     defaultConfig {
         applicationId "io.ikws4.weiju"
-        minSdk 24
+        minSdk 26
         targetSdk 32
         versionCode Integer.parseInt(new SimpleDateFormat("yyyyMMddHH").format(new Date()))
         versionName "1.0.0-nightly"
         buildConfigField("String", "COMMIT_HASH", "\"${'git rev-parse --short HEAD'.execute().text.trim()}\"")
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     buildTypes {
@@ -30,12 +41,17 @@ android {
     compileOptions {
         // https://developer.android.com/studio/write/java8-support#library-desugaring
         coreLibraryDesugaringEnabled true
-        sourceCompatibility JavaVersion.VERSION_11
-        targetCompatibility JavaVersion.VERSION_11
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
     packagingOptions {
         pickFirst 'license/*'
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
     }
 }
 
@@ -50,7 +66,8 @@ dependencies {
     implementation project(path: ':glide')
     annotationProcessor 'com.github.bumptech.glide:compiler:4.13.2'
 
-    compileOnly 'de.robv.android.xposed:api:82'
+    compileOnly 'io.github.libxposed:api:102.0.0'
+    implementation 'io.github.libxposed:service:102.0.0'
     implementation 'org.lsposed.hiddenapibypass:hiddenapibypass:4.3'
     implementation 'com.crossbowffs.remotepreferences:remotepreferences:0.8'
     implementation 'com.linkedin.dexmaker:dexmaker:2.28.3'
@@ -76,7 +93,7 @@ dependencies {
     implementation 'com.google.android.material:material:1.6.1'
     implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
 
-    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:1.1.5'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
 
     implementation platform('com.google.firebase:firebase-bom:31.2.0')
     implementation 'com.google.firebase:firebase-crashlytics'

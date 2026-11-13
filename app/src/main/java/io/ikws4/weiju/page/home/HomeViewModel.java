@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import io.github.libxposed.service.XposedService;
 import io.ikws4.weiju.BuildConfig;
 import io.ikws4.weiju.api.API;
 import io.ikws4.weiju.page.BaseViewModel;
@@ -99,6 +100,13 @@ public class HomeViewModel extends BaseViewModel {
         List<AppListView.AppItem> infos = mSelectedApps.getValue();
         mSelectedApps.getValue().add(Math.min(index, infos.size()), app);
         mSelectedApps.publish();
+
+        if (mScriptStore.getXposedService() != null) {
+            try {
+                mScriptStore.getXposedService().requestScope(Collections.singletonList(app.pkg), new XposedService.OnScopeEventListener() {});
+            } catch (Throwable ignored) {
+            }
+        }
     }
 
     public void refresh() {
@@ -126,6 +134,13 @@ public class HomeViewModel extends BaseViewModel {
 
         mSelectedApps.getValue().remove(app);
         mSelectedApps.publish();
+
+        if (mScriptStore.getXposedService() != null) {
+            try {
+                mScriptStore.getXposedService().removeScope(Collections.singletonList(app.pkg));
+            } catch (Throwable ignored) {
+            }
+        }
     }
 
     public void updateSelectedAppAfterRemove(int index, AppListView.AppItem app) {
@@ -149,6 +164,8 @@ public class HomeViewModel extends BaseViewModel {
         mMyScripts.getValue().add(item);
         mMyScripts.getValue().sort(this::myScriptsSortComparator);
         mMyScripts.publish();
+
+        mScriptStore.hotReload(pkg);
     }
 
     public void replaceInMyScripts(ScriptListView.ScriptItem oldItem, ScriptListView.ScriptItem newItem) {
@@ -170,6 +187,8 @@ public class HomeViewModel extends BaseViewModel {
         mMyScripts.getValue().add(index, newItem);
         mMyScripts.publish();
 
+        mScriptStore.hotReload(pkg);
+
         // reload avaliable script from server
         if (!oldItem.idEquals(newItem)) {
             refreshScripts();
@@ -188,6 +207,8 @@ public class HomeViewModel extends BaseViewModel {
 
         mMyScripts.getValue().remove(item);
         mMyScripts.publish();
+
+        mScriptStore.hotReload(pkg);
 
         // reload avaliable script from server
         refreshScripts();
